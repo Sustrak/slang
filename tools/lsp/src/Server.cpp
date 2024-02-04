@@ -3,6 +3,7 @@
 #include "Log.h"
 #include "RPC.h"
 #include <csignal>
+#include <iostream>
 
 using namespace slang::rpc;
 
@@ -15,6 +16,8 @@ void Server::startServer() {
     initializeServer();
 
     while (status == ServerStatus::RUNNING) {
+        auto request = RequestMessage(readJSON(LSPHeader::fromStdin().contentLength));
+
     }
 }
 
@@ -23,12 +26,11 @@ void Server::initializeServer() {
     while (status == ServerStatus::INITIALIZING) {
         // Get the header of the RPC to know how many bytes we need to consume from the input,
         // read as json the number of bytes specified by the header and construct the requestMessage
-
         auto request = RequestMessage(readJSON(LSPHeader::fromStdin().contentLength));
 
         // TODO: If the request is not of method initialize send an error to the client, for now
         // crash the server :(
-        assert(request.method == "initialize");
+        assert(request.method == slang::rpc::RPCMethod::Initialize);
 
         // Interpret the params as InitializeParams, this is safe since the RequestMessage
         // constructor will create an InitializeParams object from the json request
@@ -43,6 +45,7 @@ void Server::initializeServer() {
         // If the process id that we have been provided is not alive, exit the server
         if (initializeParams.processId != -1) {
             if (kill(initializeParams.processId, 0) != 0) {
+                Log::error("Parent process id ({}) does not exist", initializeParams.processId);
                 // TODO: parent process do not exists exit the server
             }
         }
@@ -56,12 +59,12 @@ void Server::initializeServer() {
             traceValue = initializeParams.traceValue.value();
 
         if (initializeParams.rootPath) {
-            Log::warning("initializeParams has been deprecated in favor of workspaceFolders\n");
+            // Log::warning("initializeParams has been deprecated in favor of workspaceFolders\n");
             workspaceFolders.emplace_back(initializeParams.rootPath.value(), "");
         }
 
         if (initializeParams.rootUri) {
-            Log::warning("rootUri has been deprecated in favor of workspaceFolders\n");
+            // Log::warning("rootUri has been deprecated in favor of workspaceFolders\n");
             workspaceFolders.emplace_back(initializeParams.rootUri.value(), "");
         }
 
@@ -72,21 +75,21 @@ void Server::initializeServer() {
         result.capabilities.textDocumentSync.openClose = true;
         result.capabilities.textDocumentSync.change = slang::rpc::TextDocumentSyncKind::Full;
 
-        // Setup characters that triggers autocompletion on the client
+        // Setup characters that trigger autocompletion on the client
         result.capabilities.completionProvider.triggerCharacters = {"."};
         result.capabilities.completionProvider.resolveProvider = false;
         result.capabilities.completionProvider.completionItem = {false};
 
-        auto response = ResponseMessage(1, std::make_unique<InitializeResult>(result));
-        auto JSONResponse = response.toJSON().dump();
+        // Send response to initialize request
+        sendResponse(ResponseMessage(request.id, std::make_unique<InitializeResult>(result)));
 
-        LSPHeader header(JSONResponse.size());
+        // Consume the initialized notification from the client
+        request = RequestMessage(readJSON(LSPHeader::fromStdin().contentLength));
 
-        Log::debug("{}{}\n", header.toString(), JSONResponse);
-        fmt::print("{}{}", header.toString(), JSONResponse);
+        assert(request.method == slang::rpc::RPCMethod::Initialized);
 
         status = ServerStatus::RUNNING;
-        Log::low("Served initialized :D\n");
+        Log::low("Server and Client initialized :D\n");
     }
 }
 
@@ -98,7 +101,21 @@ json Server::readJSON(size_t size) {
 
     auto j = json::parse(std::move(buff));
 
-    Log::debug("{}\n", j.dump());
+    Log::debug("Request => {}\n", j.dump());
 
     return std::move(j);
+}
+
+void Server::sendResponse(const slang::rpc::ResponseMessage& response) {
+    // Convert the response as JSON and dump it into a string
+    auto JSONResponse = response.toJSON().dump();
+    // Build the header for the response message
+    LSPHeader header(JSONResponse.size());
+
+    Log::debug("Response => {}{}\n", header.toString(), JSONResponse);
+
+    // Send the response through stdout
+    fmt::print(stdout, "{}{}\n", header.toString(), JSONResponse);
+    // Flush the stdout channel, so the response goes through
+    fflush(stdout);
 }

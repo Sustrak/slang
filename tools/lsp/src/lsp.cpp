@@ -13,7 +13,7 @@
 int main(int argc, char** argv) {
     DEBUG_GDB
 
-    Log::setVerbosity(Log::Debug);
+    Log::setVerbosity(Log::High);
     Log::useColors(false);
 
     auto server = Server();
@@ -23,5 +23,9 @@ int main(int argc, char** argv) {
     catch (const slang::rpc::NoContentLengthException&) {
         std::cerr << "NoContentLengthException" << std::endl;
     }
+    catch (const slang::rpc::UnknownLSPMethod& e) {
+        std::cerr << "UnknownLSPMethod: " << e.what() << std::endl;
+    }
+
     return 0;
 }

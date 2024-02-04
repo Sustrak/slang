@@ -76,6 +76,18 @@ inline void getEnumVector(auto& vec, const json& j, const std::string& name, aut
 }
 
 namespace slang::rpc {
+RPCMethod RPCMethodFromString(std::string_view str) {
+    if (str == "initialize")
+        return RPCMethod::Initialize;
+    if (str == "initialized")
+        return RPCMethod::Initialized;
+    if (str == "shutdown")
+        return RPCMethod::Shutdown;
+    if (str == "exit")
+        return RPCMethod::Exit;
+    throw UnknownEnumVariant(fmt::format("{} is not a valid RPCMethod variant", str));
+}
+
 ResourceOperationKind ResourceOperationKindFromString(std::string_view str) {
     if (str == "create")
         return ResourceOperationKind::Create;
@@ -791,7 +803,7 @@ WorkspaceFolder::WorkspaceFolder(const json& j) {
 }
 
 InitializeParams::InitializeParams(const json& j) :
-    WorkDoneProgressParam(j, ParamKind::Initialize) {
+    WorkDoneProgressParams(j, ParamKind::Initialize) {
     if (j.contains("processId")) {
         if (const auto& p = j["processId"]; p.is_null())
             processId = -1;
@@ -830,15 +842,13 @@ Message::Message(const json& j) {
 
 RequestMessage::RequestMessage(const json& j) : Message(j) {
     GET_VALUE(string, id, j)
-    GET_VALUE(string, method, j)
+    GET_ENUM(string, method, j, RPCMethodFromString)
 
     // Construct the correspondent param(s) for the method received
-    if (method == "initialize") {
+    if (method == RPCMethod::Initialize)
         params.emplace_back(std::make_unique<InitializeParams>(InitializeParams(j["params"])));
-    }
-    else {
-        throw UnknownLSPMethod(fmt::format("Unknown {} LSP method", method));
-    }
+    else if (method == RPCMethod::Initialized)
+        params.emplace_back(std::make_unique<InitializedParams>(InitializedParams(j["params"])));
 }
 
 json ResponseMessage::toJSON() const {

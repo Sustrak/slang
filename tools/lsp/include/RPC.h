@@ -53,8 +53,8 @@ class NoDefaultContentType : public std::exception {};
 /// @sa
 /// https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#headerPart
 class LSPHeader {
-    // Actually END_LINE should be "\r\n" but the std::getline function that we use already consumes
-    // the '\n' character
+    // Actually, END_LINE should be "\r\n"
+    // but the std::getline function that we use already consumes the '\n' character
     static constexpr std::string_view END_LINE = "\r";
     static constexpr std::string_view END_LINE_CRLF = "\r\n";
     static constexpr std::string_view CONTENT_TYPE = "Content-Type: ";
@@ -72,7 +72,7 @@ public:
     static LSPHeader fromStdin();
 };
 
-#define KIND(x) x(WorkDoneProgress) x(Initialize)
+#define KIND(x) x(WorkDoneProgress) x(Initialize) x(Initialized)
 SLANG_ENUM(ParamKind, KIND)
 #undef KIND
 
@@ -95,9 +95,9 @@ public:
 
 /// @sa
 /// https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#workDoneProgressParams
-class WorkDoneProgressParam : public Param {
+class WorkDoneProgressParams : public Param {
 public:
-    explicit WorkDoneProgressParam(const json& j, ParamKind p = ParamKind::WorkDoneProgress) :
+    explicit WorkDoneProgressParams(const json& j, ParamKind p = ParamKind::WorkDoneProgress) :
         Param(p) {
         if (j.contains("workDoneToken")) {
             workDoneToken = j["workDoneToken"];
@@ -106,6 +106,11 @@ public:
 
     std::optional<ProgressToken> workDoneToken;
 };
+
+/// Enum representing all supported RPC methods
+enum class RPCMethod { Initialize, Initialized, Shutdown, Exit };
+/// Converts the string representation of ResourceOperationKind to the correct enum variant
+RPCMethod RPCMethodFromString(std::string_view str);
 
 /// The kind of resource operations supported by the client.
 /// @sa
@@ -1539,7 +1544,7 @@ public:
 
 /// @sa
 /// https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#initializeParams
-class InitializeParams : public WorkDoneProgressParam {
+class InitializeParams : public WorkDoneProgressParams {
 public:
     explicit InitializeParams(const json& j);
 
@@ -1596,6 +1601,15 @@ public:
 };
 
 /// @sa
+/// https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#initialized
+class InitializedParams : public Param {
+public:
+    explicit InitializedParams(const json&) : Param(ParamKind::Initialized) {}
+
+    static bool isKind(ParamKind kind) { return kind == ParamKind::Initialized; }
+};
+
+/// @sa
 /// https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#abstractMessage
 class Message {
     static constexpr std::string_view DEFAULT_JSONRPC = "2.0";
@@ -1614,9 +1628,8 @@ class RequestMessage : public Message {
 public:
     explicit RequestMessage(const json& j);
     string id;
-    string method;
-    // Since Param is polymorphic a pointer needs to be stored in order to be able to downcast the
-    // type
+    RPCMethod method;
+    // Since Param is polymorphic, a pointer needs to be stored to be able to downcast the type
     std::vector<std::unique_ptr<Param>> params;
 };
 
@@ -1709,17 +1722,16 @@ public:
 /// https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#responseMessage
 class ResponseMessage : public Message {
 public:
-    explicit ResponseMessage(int id, std::unique_ptr<Result> result) :
+    explicit ResponseMessage(string id, std::unique_ptr<Result> result) :
         id(std::move(id)), result(std::move(result)) {}
 
-    explicit ResponseMessage(int id, ResponseError error) :
+    explicit ResponseMessage(string id, ResponseError error) :
         id(std::move(id)), error(std::move(error)) {}
 
     json toJSON() const;
 
-    //string id;
-    int id;
-    // Since result is polymorphic a pointer needs to be stored in order to be able to downcast the
+    string id;
+    // Since a result type is polymorphic, a pointer needs to be stored to be able to downcast the
     // type
     std::optional<std::unique_ptr<Result>> result;
     std::optional<ResponseError> error;
