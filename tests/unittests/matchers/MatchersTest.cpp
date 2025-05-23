@@ -9,7 +9,7 @@ using namespace slang::ast::matchers;
 class Callback : public MatcherCallback {
 public:
     bool found = false;
-    virtual void run(const MatchResult& result) override {
+    void run(const MatchResult&  /*result*/) override {
         found = true;
     }
 };
@@ -25,7 +25,8 @@ endmodule
     compilation.addSyntaxTree(tree);
     NO_COMPILATION_ERRORS;
 
-    MatchFinder finder;
+    auto context = ASTContext(compilation.createScriptScope(), LookupLocation::max);
+    MatchFinder finder(context);
     Callback callback;
     finder.addMatcher(moduleDeclaration().bind("module"), &callback);
 
