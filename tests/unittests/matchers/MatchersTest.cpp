@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "Test.h"
+#include "slang/matchers/Matchers.h"
+
+using namespace slang::ast::matchers;
 
 class Callback : public MatcherCallback {
 public:
